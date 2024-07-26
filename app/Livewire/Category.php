@@ -2,89 +2,176 @@
 
 namespace App\Livewire;
 
+use App\Handlers\CategoryHandler;
 use App\Models\Category as ModelsCategory;
 use Illuminate\Support\Facades\Session;
-
 use Livewire\Component;
+use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 class Category extends Component
 {
+    use WithPagination, WithFileUploads;
 
-    public $categories, $name, $description, $category_id;
+    protected $categoryHandler;
 
+    public function mount()
+    {
+        $this->categoryHandler = new CategoryHandler();
+    }
+
+    public $name, $description, $category_id;
+    public $updateCategories, $updateName, $updateDescription, $updateCategory_id;
     public $updateCategory = false;
+    public $createCategory = false;
+    public $deleteCategory = false;
+    public $deleteCategories;
+    public $deleteCategoryName;
+    public $search;
+    public $photo;
+    public $updatePhoto;
+
+
 
     protected $listeners = [
-        'deleteCategory'=>'destroy'
+        'deleteCategory' => 'categoryDelete',
+        'cancel'
     ];
 
     protected $rules = [
-        'name'=>'required',
-        'description'=>'required'
+        'name' => 'required',
+        'description' => 'required',
+        'photo' => 'image|mimes:jpeg,png,jpg,gif,svg|max:20480',
     ];
+
+
+
+    public function openCreateModal()
+    {
+        $this->createCategory = true;
+    }
+
+    public function openUpdateModal($id)
+    {
+        $updateCategories = ModelsCategory::findOrFail($id);
+        $this->updateName = $updateCategories->name;
+        $this->updateDescription = $updateCategories->description;
+        $this->updatePhoto = $updateCategories->image ?? null;
+        $this->updateCategory_id = $updateCategories->id  ;
+        $this->updateCategory = true;
+    }
+
+    public function openDeleteModal($id)
+    {
+        $this->deleteCategories = ModelsCategory::findOrFail($id);
+        $this->deleteCategoryName = $this->deleteCategories->name;
+        $this->deleteCategory = true;
+    }
+
+    public function categotyModalClose()
+    {
+        $this->createCategory = false;
+    }
+
+    public function updateyModalClose()
+    {
+        $this->updateCategory = false;
+    }
+
+    public function deleteModalClose()
+    {
+        $this->deleteCategory = false;
+    }
+
+    public static $layout = 'layouts.app';
 
     public function render()
     {
-        $this->categories = ModelsCategory::select('id','name','description')->get();
-        return view('livewire.category');
+        if (!$this->categoryHandler) {
+            $this->categoryHandler = new CategoryHandler();
+        }
+        if ($this->search && !$this->categoryHandler->categorySearch($this->search)) {
+            $categories = [];
+        } else {
+            $categories = $this->categoryHandler->categorySearch($this->search);
+        }
+        // dump($categories);
+        return view('livewire.category', ['categories' => $categories]);
     }
 
-    public function resetFields(){
+    public function searchCategory(){
+
+        if (!$this->categoryHandler) {
+            $this->categoryHandler = new CategoryHandler();
+        }
+        try {
+            $this->categoryHandler->categorySearch($this->search);
+        } catch (\Exception $e) {
+            Session::flash('error', 'Something goes wrong while search category!!');
+        }
+
+
+    }
+
+    public function resetFields()
+    {
         $this->name = '';
         $this->description = '';
+        $this->photo = '';
     }
 
-    public function store(){
-        $this->validate();
-        try{
-            ModelsCategory::create([
-                'name'=>$this->name,
-                'description'=>$this->description
-            ]);
-
-
-            Session::flash('success', 'Category Created Successfully!!');
-            $this->resetFields();
-        }catch(\Exception $e){
-            Session::flash('error','Something goes wrong while creating category!!');
-            $this->resetFields();
-        }
-    }
-
-    public function edit($id){
-        $category = ModelsCategory::findOrFail($id);
-        $this->name = $category->name;
-        $this->description = $category->description;
-        $this->category_id = $category->id;
-        $this->updateCategory = true;
-    }
-    public function cancel()
+    public function create()
     {
-        $this->updateCategory = false;
-        $this->resetFields();
-    }
-
-    public function update(){
         $this->validate();
-        try{
-            ModelsCategory::find($this->category_id)->fill([
-                'name'=>$this->name,
-                'description'=>$this->description
-            ])->save();
-            Session::flash('success','Category Updated Successfully!!');
 
-            $this->cancel();
-        }catch(\Exception $e){
-            Session::flash('error','Something goes wrong while updating category!!');
-            $this->cancel();
+        if (!$this->categoryHandler) {
+            $this->categoryHandler = new CategoryHandler();
+        }
+
+        try {
+            $this->categoryHandler->createCategory($this->name, $this->description, $this->photo);
+            $this->resetFields();
+            $this->categotyModalClose();
+        } catch (\Exception $e) {
+            Session::flash('error', 'Something goes wrong while creating category!!');
+            $this->resetFields();
+            $this->categotyModalClose();
         }
     }
-    public function destroy($id){
-        try{
-            ModelsCategory::find($id)->delete();
-             Session::flash('success',"Category Deleted Successfully!!");
-        }catch(\Exception $e){
-             Session::flash('error',"Something goes wrong while deleting category!!");
+
+    public function categoryUpdate()
+    {
+        $this->validate([
+            'updateName' => 'required',
+            'updateDescription' => 'required',
+            'updatePhoto' => 'required',
+        ]);
+
+        if (!$this->categoryHandler) {
+            $this->categoryHandler = new CategoryHandler();
+        }
+
+        try {
+            $this->categoryHandler->updateCategory($this->updateCategory_id, $this->updateName, $this->updateDescription, $this->updatePhoto);
+            $this->updateyModalClose();
+        } catch (\Exception $e) {
+            Session::flash('error', 'Something goes wrong while updating category!!');
+            $this->updateyModalClose();
+        }
+    }
+
+    public function categoryDelete()
+    {
+        try {
+            if (!$this->categoryHandler) {
+                $this->categoryHandler = new CategoryHandler();
+            }
+
+            $this->categoryHandler->deleteCategory($this->deleteCategories->id);
+            $this->deleteModalClose();
+        } catch (\Exception $e) {
+            Session::flash('error', 'Something goes wrong while deleting category!!');
+            $this->deleteModalClose();
         }
     }
 }
